@@ -11,7 +11,6 @@ from pycaprio.core.objects.annotation import Annotation
 from pycaprio.core.objects.document import Document
 from pycaprio.core.objects.project import Project
 from pycaprio.core.objects.curation import Curation
-from pycaprio.core.objects.role import RoleType
 
 
 class BaseInceptionAdapter(metaclass=ABCMeta):
@@ -140,7 +139,11 @@ class BaseInceptionAdapter(metaclass=ABCMeta):
 
     @abstractmethod
     def update_annotation_state(
-        self, project: Union[Project, int, str], document: Union[Document, int, str], user_name: str, annotation_state: str
+        self,
+        project: Union[Project, int, str],
+        document: Union[Document, int, str],
+        user_name: str,
+        annotation_state: str,
     ) -> bool:
         """
         Updates the state of an annotation
@@ -169,7 +172,9 @@ class BaseInceptionAdapter(metaclass=ABCMeta):
         pass  # pragma: no cover
 
     @abstractmethod
-    def delete_annotation(self, project: Union[Project, int, str], document: Union[Document, int, str], user_name: str) -> bool:
+    def delete_annotation(
+        self, project: Union[Project, int, str], document: Union[Document, int, str], user_name: str
+    ) -> bool:
         """
         Deletes an Annotation from a Document in a Project
         :param user_name: Annotator's username.
@@ -218,7 +223,9 @@ class BaseInceptionAdapter(metaclass=ABCMeta):
         pass  # pragma: no cover
 
     @abstractmethod
-    def curations(self, project: Union[Project, int, str], document_state: str = InceptionFormat.DEFAULT) -> List[Document]:
+    def curations(
+        self, project: Union[Project, int, str], document_state: str = InceptionFormat.DEFAULT
+    ) -> List[Document]:
         """
         Returns a list of curated documents
         :param project: Project/Project id.
@@ -253,30 +260,33 @@ class BaseInceptionAdapter(metaclass=ABCMeta):
         pass  # pragma: no cover
 
     @abstractmethod
-    def list_roles(self, project: Union[Project, int], userId: str) -> List[RoleType]:
+    def list_roles(self, project: Union[Project, int, str], user_id: str) -> List[str]:
         """
-        List permissions for a user in the given project (non AERO)
+        List the roles a user has in the given project (non-AERO).
         :param project: Project/Project id.
-        :param userId: Username.
+        :param user_id: Username.
+        :return: The user's role names in the project [See RoleType in mappings].
         """
         pass  # pragma: no cover
 
     @abstractmethod
-    def assign_roles(self, project: Union[Project, int], userId: str, role: List[RoleType]) -> List[RoleType]:
+    def assign_roles(self, project: Union[Project, int, str], user_id: str, roles: List[str]) -> List[str]:
         """
-        Assign roles to a user in the given project (non-AERO)
+        Assign roles to a user in the given project (non-AERO).
         :param project: Project/Project id.
-        :param userId: Username.
-        :param role: List of Roles [See PermissionRoles in mappings]
+        :param user_id: Username.
+        :param roles: Role names to add [See RoleType in mappings].
+        :return: The user's resulting role names in the project.
         """
         pass  # pragma: no cover
 
     @abstractmethod
-    def delete_roles(self, project: Union[Project, int], userId: str, role: List[RoleType]) -> List[RoleType]:
+    def delete_roles(self, project: Union[Project, int, str], user_id: str, roles: List[str]) -> List[str]:
         """
-        Delete roles to a user in the given project (non-AERO)
+        Delete roles from a user in the given project (non-AERO).
         :param project: Project/Project id.
-        :param userId: Username.
-        :param role: List of Roles [See PermissionRoles in mappings]
+        :param user_id: Username.
+        :param roles: Role names to remove [See RoleType in mappings].
+        :return: The user's remaining role names in the project.
         """
         pass  # pragma: no cover

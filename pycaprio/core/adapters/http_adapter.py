@@ -1,4 +1,5 @@
 from typing import IO, Union, List, Optional
+from urllib.parse import quote
 
 from pycaprio.core.clients.retryable_client import RetryableInceptionClient
 from pycaprio.core.interfaces.adapter import BaseInceptionAdapter
@@ -7,7 +8,6 @@ from pycaprio.core.interfaces.types import authentication_type
 from pycaprio.core.mappings import AnnotationState
 from pycaprio.core.mappings import InceptionFormat
 from pycaprio.core.mappings import DocumentState
-from pycaprio.core.objects.role import Role
 from pycaprio.core.objects.annotation import Annotation
 from pycaprio.core.objects.document import Document
 from pycaprio.core.objects.project import Project
@@ -16,7 +16,6 @@ from pycaprio.core.schemas.annotation import AnnotationSchema
 from pycaprio.core.schemas.document import DocumentSchema
 from pycaprio.core.schemas.project import ProjectSchema
 from pycaprio.core.schemas.curation import CurationSchema
-from pycaprio.core.schemas.role import RoleSchema
 
 
 class HttpInceptionAdapter(BaseInceptionAdapter):
@@ -88,7 +87,7 @@ class HttpInceptionAdapter(BaseInceptionAdapter):
         project_id = self._get_object_id(project)
         document_id = self._get_object_id(document)
         response = self.client.get(
-            f"/projects/{project_id}/documents/{document_id}/annotations/{user_name}",
+            f"/projects/{project_id}/documents/{document_id}/annotations/{self._quote_segment(user_name)}",
             params={"format": annotation_format},
         )
         return response.content
@@ -133,7 +132,7 @@ class HttpInceptionAdapter(BaseInceptionAdapter):
         project_id = self._get_object_id(project)
         document_id = self._get_object_id(document)
         response = self.client.post(
-            f"/projects/{project_id}/documents/{document_id}/annotations/{user_name}",
+            f"/projects/{project_id}/documents/{document_id}/annotations/{self._quote_segment(user_name)}",
             form_data={"format": annotation_format, "state": annotation_state},
             files={"content": ("data", content)},
         )
@@ -143,13 +142,17 @@ class HttpInceptionAdapter(BaseInceptionAdapter):
         return annotation
 
     def update_annotation_state(
-        self, project: Union[Project, int, str], document: Union[Document, int, str], user_name: str, annotation_state: str
+        self,
+        project: Union[Project, int, str],
+        document: Union[Document, int, str],
+        user_name: str,
+        annotation_state: str,
     ) -> bool:
         project_id = self._get_object_id(project)
         document_id = self._get_object_id(document)
 
         self.client.post(
-            f"/projects/{project_id}/documents/{document_id}/annotations/{user_name}/state",
+            f"/projects/{project_id}/documents/{document_id}/annotations/{self._quote_segment(user_name)}/state",
             form_data={"state": annotation_state},
         )
         return True
@@ -165,10 +168,14 @@ class HttpInceptionAdapter(BaseInceptionAdapter):
         self.client.delete(f"/projects/{project_id}/documents/{document_id}")
         return True
 
-    def delete_annotation(self, project: Union[Project, int, str], document: Union[Document, int, str], user_name: str) -> bool:
+    def delete_annotation(
+        self, project: Union[Project, int, str], document: Union[Document, int, str], user_name: str
+    ) -> bool:
         project_id = self._get_object_id(project)
         document_id = self._get_object_id(document)
-        self.client.delete(f"/projects/{project_id}/documents/{document_id}/annotations/{user_name}")
+        self.client.delete(
+            f"/projects/{project_id}/documents/{document_id}/annotations/{self._quote_segment(user_name)}"
+        )
         return True
 
     def export_project(self, project: Union[Project, int, str], project_format: str = InceptionFormat.DEFAULT) -> bytes:
@@ -180,7 +187,9 @@ class HttpInceptionAdapter(BaseInceptionAdapter):
         response = self.client.post("/projects/import", files={"file": ("data", zip_stream)})
         return ProjectSchema().load(response.json()["body"], many=False)
 
-    def curations(self, project: Union[Project, int, str], document_state: str = InceptionFormat.DEFAULT) -> List[Document]:
+    def curations(
+        self, project: Union[Project, int, str], document_state: str = InceptionFormat.DEFAULT
+    ) -> List[Document]:
         curations_list = self.documents(project)
         curator_list = [document for document in curations_list if document.document_state == document_state]
         return curator_list
@@ -224,20 +233,46 @@ class HttpInceptionAdapter(BaseInceptionAdapter):
         self.client.delete(f"/projects/{project_id}/documents/{document_id}/curation")
         return True
 
-    def list_roles(self, project: Union[Project, int], user_id: str) -> List[Role]:
+    def list_roles(self, project: Union[Project, int, str], user_id: str) -> List[str]:
         project_id = self._get_object_id(project)
-        response = self.client.get(f"/projects/{project_id}/permissions/{user_id}")
-        return RoleSchema().load(response.json()["body"], many=True)
+        response = self.client.get(f"/projects/{project_id}/permissions/{self._quote_segment(user_id)}")
+        return self._extract_role_names(response)
 
-    def assign_roles(self, project: Union[Project, int], user_id: str, roles: List[str]) -> List[Role]:
+    def assign_roles(self, project: Union[Project, int, str], user_id: str, roles: List[str]) -> List[str]:
+        if not roles:
+            raise ValueError("roles must not be empty; provide at least one role to assign")
         project_id = self._get_object_id(project)
-        response = self.client.post(f"/projects/{project_id}/permissions/{user_id}", data={"roles": roles})
-        return RoleSchema().load(response.json()["body"], many=True)
+        response = self.client.post(
+            f"/projects/{project_id}/permissions/{self._quote_segment(user_id)}", params={"roles": roles}
+        )
+        return self._extract_role_names(response)
 
-    def delete_roles(self, project: Union[Project, int], user_id: str, roles: List[str]) -> List[Role]:
+    def delete_roles(self, project: Union[Project, int, str], user_id: str, roles: List[str]) -> List[str]:
+        if not roles:
+            raise ValueError("roles must not be empty; provide at least one role to delete")
         project_id = self._get_object_id(project)
-        response = self.client.delete(f"/projects/{project_id}/permissions/{user_id}", data={"roles": roles})
-        return RoleSchema().load(response.json()["body"], many=True)
+        response = self.client.delete(
+            f"/projects/{project_id}/permissions/{self._quote_segment(user_id)}", params={"roles": roles}
+        )
+        return self._extract_role_names(response)
+
+    @staticmethod
+    def _extract_role_names(response) -> List[str]:
+        """
+        Parses a permissions response into a list of role names. A mutating endpoint (assign/delete)
+        may answer with an empty/no-content body, which is treated as "no roles" rather than raising.
+        """
+        if not response.content:
+            return []
+        return [permission["role"] for permission in response.json()["body"]]
+
+    @staticmethod
+    def _quote_segment(segment: Union[int, str]) -> str:
+        """
+        URL-encodes a single path segment so that user-controlled values (e.g. usernames
+        containing '/', spaces or other reserved characters) do not corrupt the request path.
+        """
+        return quote(str(segment), safe="")
 
     @staticmethod
     def _get_object_id(o: Union[int, str, Project, Document, Annotation]) -> Union[int, str]:
